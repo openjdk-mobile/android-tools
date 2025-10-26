@@ -1,7 +1,7 @@
 # Android NDK: replace with the location to your Android NDK
 ANDROID_NDK ?= /opt/android-ndk-r29
 # OpenJDK: replace with the build directory of your OpenJDK for Android
-JDK = /home/johan/openjdk/github/mobile/build/android-aarch64-server-release
+JDK ?= /home/johan/openjdk/github/mobile/build/android-aarch64-server-release
 
 ABI ?= aarch64
 SYSROOT := $(ANDROID_NDK)/toolchains/llvm/prebuilt/linux-x86_64/sysroot
@@ -42,6 +42,7 @@ $(BINARY): $(OBJS)
 # Clean
 clean:
 	rm -f $(BINARY)
+	rm -f $(OBJS)
 
 # Push and run on connected device
 run: all

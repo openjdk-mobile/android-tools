@@ -10,9 +10,11 @@ void start_java() {
     vm_args.version = JNI_VERSION_1_8;
     vm_args.nOptions = 1;
     vm_args.options = options;
-    fprintf(stderr, "START MAIN\n");
     jint res = JNI_CreateJavaVM(&jvm, (void **)&env, &vm_args);
-    fprintf(stderr, "starting main\n");
+    if (res != 0) {
+        fprintf(stderr, "Could not created JVM, res = %d\n", res);
+        return;
+    }
     jclass cls = (*env)->FindClass(env, "HelloWorld");
     if (cls == NULL) {
         printf("Could not find HelloWorld class\n");
