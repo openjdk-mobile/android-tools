@@ -21,8 +21,6 @@ CFLAGS := -O2 -fPIC
 CFLAGS += -I$(OPENJDK_INCLUDE) -I$(OPENJDK_INCLUDE_PLATFORM) 
 CFLAGS += --sysroot=$(SYSROOT)
 
-STLFLAGS := -L$(ANDROID_NDK)/sources/cxx-stl/llvm-libc++/libs/$(ABI) -lc++_static -lc++abi
-
 LDFLAGS := -lm -ldl -llog -lc++_static -lc++abi -L$(JDK)/images/static-libs/lib -L$(JDK)/images/static-libs/lib/server  -Wl,--export-dynamic  -ljvm -ljimage -Wl,--whole-archive -ljava -lnio -lnet -Wl,--no-whole-archive
 
 SRCS := hellojava.c
@@ -34,7 +32,7 @@ all: $(BINARY)
 
 # Build the executable
 $(BINARY): $(OBJS)
-	$(CXX) $(OBJS) $(LIBJVM) $(STLFLAGS) -o $(BINARY) $(LDFLAGS) --sysroot=$(SYSROOT)
+	$(CXX) $(OBJS) -o $(BINARY) $(LDFLAGS) --sysroot=$(SYSROOT)
 
 %.o: %.c
 	$(CXX) $(CFLAGS) -c $< -o $@
