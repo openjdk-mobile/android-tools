@@ -13,7 +13,6 @@ jobs:
       with:
         java-version: '25.0.1'
         distribution: 'temurin'
-
     - name: 'install NDK'
       uses: android/ndk@v1
       with:
@@ -30,7 +29,4 @@ jobs:
           --with-toolchain-path=/opt/android-ndk-r29/toolchains/llvm/prebuilt/linux-x86_64/bin \
           --with-sysroot=/opt/android-ndk-r29/toolchains/llvm/prebuilt/linux-x86_64/sysroot \
           --with-toolchain-type=clang
-
           make LOG=cmdlines,info CONF=android-aarch64-server-release static-libs-image
-
-
