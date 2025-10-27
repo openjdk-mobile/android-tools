@@ -1,0 +1,36 @@
+name: Build OpenJDK Mobile for Android Aarch64
+
+on:
+  workflow_call:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+  steps:
+    - name: Set up JDK 25
+      uses: actions/setup-java@v4
+      with:
+        java-version: '25.0.1'
+        distribution: 'temurin'
+
+    - name 'install NDK'
+      uses: android/ndk@v1
+      with:
+        ndk-version: r29
+      - name: Clone OpenJDK Mobile sources
+        run: |
+          git clone https://github.com/openjdk/mobile.git
+          cd mobile
+          git checkout master
+          cp ../openjdk-ext/patches/pr-40.diff
+          bash ./configure \
+          --disable-warnings-as-errors \
+          --openjdk-target=aarch64-linux-android \
+          --with-toolchain-path=/opt/android-ndk-r29/toolchains/llvm/prebuilt/linux-x86_64/bin \
+          --with-sysroot=/opt/android-ndk-r29/toolchains/llvm/prebuilt/linux-x86_64/sysroot \
+          --with-toolchain-type=clang
+
+          make LOG=cmdlines,info CONF=android-aarch64-server-release static-libs-image
+
+
