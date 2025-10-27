@@ -1,0 +1,330 @@
+diff --git a/make/autoconf/flags-cflags.m4 b/make/autoconf/flags-cflags.m4
+index 974fa6a7b00..07a0328e22a 100644
+--- a/make/autoconf/flags-cflags.m4
++++ b/make/autoconf/flags-cflags.m4
+@@ -70,7 +70,7 @@ AC_DEFUN([FLAGS_SETUP_DEBUG_SYMBOLS],
+   DEBUG_PREFIX_CFLAGS=
+ 
+   # Debug symbols
+-  if test "x$TOOLCHAIN_TYPE" = xgcc; then
++  if test "x$TOOLCHAIN_TYPE" = xgcc || test "x$OPENJDK_TARGET_OS" = xandroid; then
+     if test "x$ALLOW_ABSOLUTE_PATHS_IN_OUTPUT" = "xfalse"; then
+       # Check if compiler supports -fdebug-prefix-map. If so, use that to make
+       # the debug symbol paths resolve to paths relative to the workspace root.
+@@ -432,8 +432,8 @@ AC_DEFUN([FLAGS_SETUP_CFLAGS_HELPER],
+   elif test "x$OPENJDK_TARGET_OS" = xwindows; then
+     CFLAGS_OS_DEF_JVM="-D_WINDOWS -DWIN32 -D_JNI_IMPLEMENTATION_"
+   elif test "x$OPENJDK_TARGET_OS" = xandroid; then
+-    CFLAGS_OS_DEF_JVM="-target aarch64-linux-android -DLINUX -D_ALLBSD_SOURCE -DANDROID"
+-    CFLAGS_OS_DEF_JDK="-target aarch64-linux-android -DLINUX -D__USE_BSD"
++    CFLAGS_OS_DEF_JVM="-target aarch64-linux-android32 -DLINUX -D_ALLBSD_SOURCE -DANDROID"
++    CFLAGS_OS_DEF_JDK="-target aarch64-linux-android32 -DLINUX -D__USE_BSD"
+   elif test "x$OPENJDK_TARGET_OS" = xios; then
+     CFLAGS_OS_DEF_JVM="-D_ALLBSD_SOURCE -D__IOS__ -D_XOPEN_SOURCE"
+     CFLAGS_OS_DEF_JDK="-D_ALLBSD_SOURCE -D__IOS__"
+diff --git a/make/autoconf/platform.m4 b/make/autoconf/platform.m4
+index 38b3086d182..385526ff968 100644
+--- a/make/autoconf/platform.m4
++++ b/make/autoconf/platform.m4
+@@ -539,6 +539,9 @@ AC_DEFUN([PLATFORM_SETUP_LEGACY_VARS_HELPER],
+   if test "x$OPENJDK_$1_OS" = xios; then
+     HOTSPOT_$1_OS=bsd
+   fi
++  if test "x$OPENJDK_$1_OS" = xandroid; then
++    HOTSPOT_$1_OS=linux
++  fi
+   AC_SUBST(HOTSPOT_$1_OS)
+ 
+   HOTSPOT_$1_OS_TYPE=${OPENJDK_$1_OS_TYPE}
+diff --git a/src/hotspot/os/linux/os_linux.cpp b/src/hotspot/os/linux/os_linux.cpp
+index 772b170d11c..fa93cc7de2b 100644
+--- a/src/hotspot/os/linux/os_linux.cpp
++++ b/src/hotspot/os/linux/os_linux.cpp
+@@ -624,12 +624,14 @@ void os::init_system_properties_values() {
+ 
+     // Get rid of /lib, if binary is libjvm.so,
+     // or cut off /bin, if it is a statically linked binary.
++#ifndef __BIONIC__
+     if (pslash != nullptr) {
+       pslash = strrchr(buf, '/');
+       if (pslash != nullptr) {
+         *pslash = '\0';
+       }
+     }
++#endif
+     Arguments::set_java_home(buf);
+     if (!set_boot_path('/', ':')) {
+       vm_exit_during_initialization("Failed setting boot class path.", nullptr);
+@@ -677,16 +679,21 @@ void os::init_system_properties_values() {
+ 
+ void os::Linux::libpthread_init() {
+   // Save glibc and pthread version strings.
++#ifndef __BIONIC__
+ #if !defined(_CS_GNU_LIBC_VERSION) || \
+     !defined(_CS_GNU_LIBPTHREAD_VERSION)
+   #error "glibc too old (< 2.3.2)"
+ #endif
++#endif
+ 
+ #ifdef MUSL_LIBC
+   // confstr() from musl libc returns EINVAL for
+   // _CS_GNU_LIBC_VERSION and _CS_GNU_LIBPTHREAD_VERSION
+   os::Linux::set_libc_version("musl - unknown");
+   os::Linux::set_libpthread_version("musl - unknown");
++#elif defined(__BIONIC__)
++  os::Linux::set_libc_version("bionic - unknown");
++  os::Linux::set_libpthread_version("bionic - unknown");
+ #else
+   size_t n = confstr(_CS_GNU_LIBC_VERSION, nullptr, 0);
+   assert(n > 0, "cannot retrieve glibc version");
+@@ -2005,6 +2012,9 @@ void * os::Linux::dll_load_in_vmthread(const char *filename, char *ebuf,
+ }
+ 
+ const char* os::Linux::dll_path(void* lib) {
++#ifdef __BIONIC__
++  return nullptr;
++#else
+   struct link_map *lmap;
+   const char* l_path = nullptr;
+   assert(lib != nullptr, "dll_path parameter must not be null");
+@@ -2014,6 +2024,7 @@ const char* os::Linux::dll_path(void* lib) {
+     l_path = lmap->l_name;
+   }
+   return l_path;
++#endif
+ }
+ 
+ static unsigned count_newlines(const char* s) {
+@@ -3122,7 +3133,11 @@ extern "C" JNIEXPORT void numa_error(char *where) { }
+ // Handle request to load libnuma symbol version 1.1 (API v1). If it fails
+ // load symbol from base version instead.
+ void* os::Linux::libnuma_dlsym(void* handle, const char *name) {
++  #ifndef __BIONIC__
+   void *f = dlvsym(handle, name, "libnuma_1.1");
++  #else
++  void *f = dlsym(handle, name);
++  #endif
+   if (f == nullptr) {
+     f = dlsym(handle, name);
+   }
+@@ -3132,7 +3147,11 @@ void* os::Linux::libnuma_dlsym(void* handle, const char *name) {
+ // Handle request to load libnuma symbol version 1.2 (API v2) only.
+ // Return null if the symbol is not defined in this particular version.
+ void* os::Linux::libnuma_v2_dlsym(void* handle, const char* name) {
++  #ifndef __BIONIC__
+   return dlvsym(handle, name, "libnuma_1.2");
++  #else
++  return dlsym(handle, name);
++  #endif
+ }
+ 
+ // Check numa dependent syscalls
+@@ -4361,7 +4380,12 @@ void os::init(void) {
+   check_pax();
+ 
+   // Check the availability of MADV_POPULATE_WRITE.
++#ifdef __BIONIC__
++  char dummy2;
++  FLAG_SET_DEFAULT(UseMadvPopulateWrite, (::madvise(&dummy2, 1, MADV_POPULATE_WRITE) == 0));
++#else
+   FLAG_SET_DEFAULT(UseMadvPopulateWrite, (::madvise(nullptr, 0, MADV_POPULATE_WRITE) == 0));
++#endif
+ 
+   os::Posix::init();
+ }
+@@ -5110,7 +5134,11 @@ bool os::is_thread_cpu_time_supported() {
+ // Linux doesn't yet have a (official) notion of processor sets,
+ // so just return the system wide load average.
+ int os::loadavg(double loadavg[], int nelem) {
++  #ifndef __BIONIC__
+   return ::getloadavg(loadavg, nelem);
++  #else
++  return -1;
++  #endif
+ }
+ 
+ // Get the default path to the core file
+diff --git a/src/hotspot/os/linux/os_perf_linux.cpp b/src/hotspot/os/linux/os_perf_linux.cpp
+index 7caf8f98a00..1c47327a024 100644
+--- a/src/hotspot/os/linux/os_perf_linux.cpp
++++ b/src/hotspot/os/linux/os_perf_linux.cpp
+@@ -1009,6 +1009,7 @@ int64_t NetworkPerformanceInterface::NetworkPerformance::read_counter(const char
+ 
+ int NetworkPerformanceInterface::NetworkPerformance::network_utilization(NetworkInterface** network_interfaces) const
+ {
++#ifndef __BIONIC__
+   ifaddrs* addresses;
+   ifaddrs* cur_address;
+ 
+@@ -1033,6 +1034,9 @@ int NetworkPerformanceInterface::NetworkPerformance::network_utilization(Network
+   *network_interfaces = ret;
+ 
+   return OS_OK;
++#else
++  return -1;
++#endif
+ }
+ 
+ NetworkPerformanceInterface::NetworkPerformanceInterface() {
+diff --git a/src/hotspot/os/posix/os_posix.cpp b/src/hotspot/os/posix/os_posix.cpp
+index e56f4ffedb3..55bc0f49ffd 100644
+--- a/src/hotspot/os/posix/os_posix.cpp
++++ b/src/hotspot/os/posix/os_posix.cpp
+@@ -2101,6 +2101,7 @@ char** os::get_environ() { return environ; }
+ //        -this function is unsafe to use in non-error situations, mainly
+ //         because the child process will inherit all parent descriptors.
+ int os::fork_and_exec(const char* cmd) {
++#ifndef __BIONIC__
+   const char* argv[4] = {"sh", "-c", cmd, nullptr};
+   pid_t pid = -1;
+   char** env = os::get_environ();
+@@ -2137,6 +2138,9 @@ int os::fork_and_exec(const char* cmd) {
+     // Don't log, we are inside error handling
+     return -1;
+   }
++#else
++  return -1;
++#endif
+ }
+ 
+ bool os::message_box(const char* title, const char* message) {
+diff --git a/src/hotspot/share/classfile/classLoader.cpp b/src/hotspot/share/classfile/classLoader.cpp
+index 082c745f4c3..b5bc9c33e0f 100644
+--- a/src/hotspot/share/classfile/classLoader.cpp
++++ b/src/hotspot/share/classfile/classLoader.cpp
+@@ -857,10 +857,17 @@ void ClassLoader::load_jimage_library() {
+   assert(JImageOpen == nullptr, "should not load jimage library twice");
+ 
+   if (is_vm_statically_linked()) {
++#ifndef __BIONIC__
+       JImageOpen = CAST_TO_FN_PTR(JImageOpen_t, os::lookup_function("JIMAGE_Open"));
+       JImageClose = CAST_TO_FN_PTR(JImageClose_t, os::lookup_function("JIMAGE_Close"));
+       JImageFindResource = CAST_TO_FN_PTR(JImageFindResource_t, os::lookup_function("JIMAGE_FindResource"));
+       JImageGetResource = CAST_TO_FN_PTR(JImageGetResource_t, os::lookup_function("JIMAGE_GetResource"));
++#else
++      JImageOpen = JIMAGE_Open;
++      JImageClose = JIMAGE_Close;
++      JImageFindResource = JIMAGE_FindResource;
++      JImageGetResource = JIMAGE_GetResource;
++#endif
+       assert(JImageOpen != nullptr && JImageClose != nullptr &&
+             JImageFindResource != nullptr && JImageGetResource != nullptr,
+             "could not lookup all jimage library functions");
+diff --git a/src/hotspot/share/utilities/forbiddenFunctions.hpp b/src/hotspot/share/utilities/forbiddenFunctions.hpp
+index 47becd7b4c7..6de67b9bd86 100644
+--- a/src/hotspot/share/utilities/forbiddenFunctions.hpp
++++ b/src/hotspot/share/utilities/forbiddenFunctions.hpp
+@@ -41,14 +41,17 @@
+ #ifdef _WINDOWS
+ #include "forbiddenFunctions_windows.hpp"
+ #else
++#if !defined(__BIONIC__)
+ #include "forbiddenFunctions_posix.hpp"
+ #endif
++#endif
+ 
+ // Forbid the use of various C library functions.  Some of these have os::
+ // replacements that should be used instead.  Others are considered obsolete
+ // or have security concerns, either with preferred alternatives, or to be
+ // avoided entirely.
+ 
++#if !defined(__BIONIC__)
+ FORBID_IMPORTED_NORETURN_C_FUNCTION(void exit(int), noexcept, "use os::exit")
+ FORBID_IMPORTED_NORETURN_C_FUNCTION(void _Exit(int), noexcept, "use os::exit")
+ 
+@@ -80,4 +83,5 @@ FORBID_IMPORTED_C_FUNCTION(void* realloc(void *ptr, size_t size), noexcept, "use
+ FORBID_IMPORTED_C_FUNCTION(char* strdup(const char *s), noexcept, "use os::strdup");
+ FORBID_IMPORTED_C_FUNCTION(wchar_t* wcsdup(const wchar_t *s), noexcept, "don't use");
+ 
++#endif
+ #endif // SHARE_UTILITIES_FORBIDDENFUNCTIONS_HPP
+diff --git a/src/java.base/unix/native/libjava/ProcessImpl_md.c b/src/java.base/unix/native/libjava/ProcessImpl_md.c
+index f7531ad5abe..10da71517ae 100644
+--- a/src/java.base/unix/native/libjava/ProcessImpl_md.c
++++ b/src/java.base/unix/native/libjava/ProcessImpl_md.c
+@@ -582,7 +582,11 @@ spawnChild(JNIEnv *env, jobject process, ChildStuff *c, const char *helperpath)
+         }
+     }
+ 
++#ifndef __BIONIC__
+     rval = posix_spawn(&resultPid, helperpath, 0, 0, (char * const *) hlpargs, environ);
++#else
++    return -1;
++#endif
+ 
+     if (rval != 0) {
+         return -1;
+diff --git a/src/java.base/unix/native/libjava/java_props_md.c b/src/java.base/unix/native/libjava/java_props_md.c
+index 303df48f1a2..9882860cb5f 100644
+--- a/src/java.base/unix/native/libjava/java_props_md.c
++++ b/src/java.base/unix/native/libjava/java_props_md.c
+@@ -288,7 +288,11 @@ static int ParseLocale(JNIEnv* env, int cat, char ** std_language, char ** std_s
+         if (strcmp(p, "ISO8859-15") == 0)
+             p = "ISO8859-15";
+         else
++#ifndef __BIONIC__
+             p = nl_langinfo(CODESET);
++#else
++            p = "UTF-8";
++#endif
+ 
+         /* Convert the bare "646" used on Solaris to a proper IANA name */
+         if (strcmp(p, "646") == 0)
+diff --git a/src/java.instrument/unix/native/libinstrument/EncodingSupport_md.c b/src/java.instrument/unix/native/libinstrument/EncodingSupport_md.c
+index 490eea9a5ac..a35d4e35b67 100644
+--- a/src/java.instrument/unix/native/libinstrument/EncodingSupport_md.c
++++ b/src/java.instrument/unix/native/libinstrument/EncodingSupport_md.c
+@@ -58,6 +58,7 @@ utfError(char *file, int line, char *message)
+ static void
+ utfInitialize(void)
+ {
++#ifndef __BIONIC__
+     const char* codeset;
+ 
+ #ifndef MACOSX
+@@ -92,6 +93,7 @@ utfInitialize(void)
+     if ( iconvFromPlatform == (iconv_t)-1 ) {
+         UTF_ERROR("Failed to complete iconv_open() setup");
+     }
++#endif
+ }
+ 
+ /*
+@@ -101,6 +103,7 @@ utfInitialize(void)
+ static int
+ iconvConvert(iconv_t ic, char *bytes, int len, char *output, int outputMaxLen)
+ {
++#ifndef __BIONIC__
+     int outputLen = 0;
+ 
+     UTF_ASSERT(bytes);
+@@ -139,6 +142,7 @@ iconvConvert(iconv_t ic, char *bytes, int len, char *output, int outputMaxLen)
+     (void)memcpy(output, bytes, len);
+     output[len] = 0;
+     return outputLen;
++#endif
+ }
+ 
+ /*
+diff --git a/src/jdk.jdwp.agent/share/native/libjdwp/utf_util.c b/src/jdk.jdwp.agent/share/native/libjdwp/utf_util.c
+index f5573930d34..173a9d46e9d 100644
+--- a/src/jdk.jdwp.agent/share/native/libjdwp/utf_util.c
++++ b/src/jdk.jdwp.agent/share/native/libjdwp/utf_util.c
+@@ -460,6 +460,7 @@ typedef enum {TO_UTF8, FROM_UTF8} conv_direction;
+  * NOTE: outputBufSize includes the space for the trailing 0.
+  */
+ static int iconvConvert(conv_direction drn, char *bytes, size_t len, char *output, size_t outputBufSize) {
++#ifndef __BIONIC__
+ 
+     static char *codeset = 0;
+     iconv_t func;
+@@ -530,6 +531,9 @@ static int iconvConvert(conv_direction drn, char *bytes, size_t len, char *outpu
+     (void)memcpy(output, bytes, len);
+     output[len] = 0;
+     return len;
++#else
++    return -1;
++#endif
+  }
+ 
+ /*
