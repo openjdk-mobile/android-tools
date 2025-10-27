@@ -20,7 +20,7 @@ jobs:
       - name: 'install NDK'
         uses: nttld/setup-ndk@v1
         with:
-          ndk-version: r29ndk
+          ndk-version: r29
 
       - name: Clone OpenJDK Mobile sources
         run: |
