@@ -14,7 +14,7 @@ jobs:
         java-version: '25.0.1'
         distribution: 'temurin'
 
-    - name 'install NDK'
+    - name: 'install NDK'
       uses: android/ndk@v1
       with:
         ndk-version: r29
@@ -23,7 +23,7 @@ jobs:
           git clone https://github.com/openjdk/mobile.git
           cd mobile
           git checkout master
-          cp ../openjdk-ext/patches/pr-40.diff
+          patch -1 < ../openjdk-ext/patches/pr-40.diff
           bash ./configure \
           --disable-warnings-as-errors \
           --openjdk-target=aarch64-linux-android \
