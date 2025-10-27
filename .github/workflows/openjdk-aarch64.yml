@@ -7,26 +7,37 @@ jobs:
   build:
     runs-on: ubuntu-22.04
 
-  steps:
-    - name: Set up JDK 25
-      uses: actions/setup-java@v4
-      with:
-        java-version: '25.0.1'
-        distribution: 'temurin'
-    - name: 'install NDK'
-      uses: ndk-developers/setup-ndk@v1
-      with:
-        ndk-version: r29
+    steps:
+      - name: Checkout openjdk-ext repository (caller repo)
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          java-version: '25.0.1'
+          distribution: 'temurin'
+
+      - name: 'install NDK'
+        uses: ndk-developers/setup-ndk@v1
+        with:
+          ndk-version: r29
+
       - name: Clone OpenJDK Mobile sources
         run: |
           git clone https://github.com/openjdk/mobile.git
           cd mobile
           git checkout master
+          echo "Applying patch"
           patch -1 < ../openjdk-ext/patches/pr-40.diff
+
+      - name: Configure and Build
+        run: |
+          cd mobile
           bash ./configure \
-          --disable-warnings-as-errors \
-          --openjdk-target=aarch64-linux-android \
-          --with-toolchain-path=/opt/android-ndk-r29/toolchains/llvm/prebuilt/linux-x86_64/bin \
-          --with-sysroot=/opt/android-ndk-r29/toolchains/llvm/prebuilt/linux-x86_64/sysroot \
-          --with-toolchain-type=clang
+            --disable-warnings-as-errors \
+            --openjdk-target=aarch64-linux-android \
+            --with-toolchain-path=/opt/android-ndk-r29/toolchains/llvm/prebuilt/linux-x86_64/bin \
+            --with-sysroot=/opt/android-ndk-r29/toolchains/llvm/prebuilt/linux-x86_64/sysroot \
+            --with-toolchain-type=clang
+
           make LOG=cmdlines,info CONF=android-aarch64-server-release static-libs-image
