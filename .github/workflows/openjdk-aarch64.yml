@@ -11,6 +11,11 @@ jobs:
       - name: Checkout openjdk-ext repository (caller repo)
         uses: actions/checkout@v4
 
+      - name: Install libraries
+        run: |
+          sudo apt-get update
+          sudo apt install libcups2-dev
+
       - name: Set up JDK 25
         uses: actions/setup-java@v4
         with:
@@ -19,8 +24,9 @@ jobs:
 
       - name: 'install NDK'
         uses: nttld/setup-ndk@v1
+        id: setup-ndk
         with:
-          ndk-version: r29ndk
+          ndk-version: r29
 
       - name: Clone OpenJDK Mobile sources
         run: |
@@ -36,8 +42,10 @@ jobs:
           bash ./configure \
             --disable-warnings-as-errors \
             --openjdk-target=aarch64-linux-android \
-            --with-toolchain-path=/opt/android-ndk-r29/toolchains/llvm/prebuilt/linux-x86_64/bin \
-            --with-sysroot=/opt/android-ndk-r29/toolchains/llvm/prebuilt/linux-x86_64/sysroot \
+            --with-toolchain-path=${ANDROID_NDK}/toolchains/llvm/prebuilt/linux-x86_64/bin \
+            --with-sysroot=${ANDROID_NDK}/toolchains/llvm/prebuilt/linux-x86_64/sysroot \
             --with-toolchain-type=clang
 
           make LOG=cmdlines,info CONF=android-aarch64-server-release static-libs-image
+        env:
+          ANDROID_NDK: ${{ steps.setup-ndk.outputs.ndk-path }}
