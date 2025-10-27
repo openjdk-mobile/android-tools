@@ -18,9 +18,9 @@ jobs:
           distribution: 'temurin'
 
       - name: 'install NDK'
-        uses: ndk-developers/setup-ndk@v1
+        uses: nttld/setup-ndk@v1
         with:
-          ndk-version: r29
+          ndk-version: r29ndk
 
       - name: Clone OpenJDK Mobile sources
         run: |
