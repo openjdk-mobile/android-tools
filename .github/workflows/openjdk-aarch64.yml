@@ -28,7 +28,7 @@ jobs:
           cd mobile
           git checkout master
           echo "Applying patch"
-          patch -1 < ../openjdk-ext/patches/pr-40.diff
+          patch -p1 < ../openjdk-ext/patches/pr-40.diff
 
       - name: Configure and Build
         run: |
